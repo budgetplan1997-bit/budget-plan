@@ -1,0 +1,47 @@
+name: Monthly budget job
+
+on:
+  schedule:
+    - cron: "0 0 1 * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "auto, deductions or report"
+        default: "report"
+      year:
+        description: "Report year (blank = automatic)"
+        default: ""
+      only_user:
+        description: "Only this user name (blank = everyone)"
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --omit=dev
+      - run: node scripts/monthly-job.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          MODE: ${{ github.event.inputs.mode || 'auto' }}
+          REPORT_YEAR: ${{ github.event.inputs.year }}
+          ONLY_USER: ${{ github.event.inputs.only_user }}
+
+      - name: Keep the schedule alive
+        if: github.event_name == 'schedule'
+        run: |
+          date -u > .github/last-run.txt
+          git config user.name "budget-bot"
+          git config user.email "budget-bot@users.noreply.github.com"
+          git add .github/last-run.txt
+          git commit -m "Monthly job ran" || echo "nothing to commit"
+          git push
