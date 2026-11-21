@@ -1,0 +1,12 @@
+{
+  "name": "budget-plan",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Budget Plan - splits income into Savings, Needs and Wants",
+  "dependencies": {
+    "firebase-admin": "^12.1.0",
+    "nodemailer": "^6.9.13",
+    "pdfkit": "^0.15.0"
+  }
+}

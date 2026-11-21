@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Budget Plan</title>
+<meta name="theme-color" content="#14532d">
+<style>
+  :root{
+    --bg:#f4f6f3; --card:#fff; --ink:#1c2a22; --muted:#66746b; --line:#e1e7e2;
+    --green:#14532d; --save:#1d6fb8; --need:#b7791f; --want:#9b2c7e; --bad:#c0392b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:16px}
+  header{background:var(--green);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5}
+  header h1{font-size:19px;margin:0}
+  header .who{font-size:13px;opacity:.85}
+  main{max-width:720px;margin:0 auto;padding:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+  h2{font-size:17px;margin:0 0 12px}
+  label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+  input,select{width:100%;padding:11px 12px;border:1px solid #cfd8d2;border-radius:10px;font-size:16px;background:#fff;color:var(--ink)}
+  button{border:0;border-radius:10px;padding:12px 14px;font-size:15px;font-weight:600;cursor:pointer;background:var(--green);color:#fff}
+  button.ghost{background:#e8efe9;color:var(--green)}
+  button.danger{background:#fbe9e7;color:var(--bad)}
+  button.small{padding:7px 10px;font-size:13px}
+  button:disabled{opacity:.5}
+  .row{display:flex;gap:10px}
+  .row>*{flex:1}
+  .balances{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+  .bal{border-radius:14px;padding:12px;color:#fff}
+  .bal .t{font-size:12px;opacity:.9}
+  .bal .v{font-size:20px;font-weight:700;margin-top:4px}
+  .bal .p{font-size:11px;opacity:.85;margin-top:2px}
+  .s{background:var(--save)} .n{background:var(--need)} .w{background:var(--want)}
+  .neg{outline:3px solid #ffb3a7}
+  .stat{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line);font-size:15px}
+  .stat:last-child{border:0}
+  .preview{font-size:13px;color:var(--muted);margin-top:8px}
+  .tabs{display:flex;gap:6px;margin-bottom:14px}
+  .tabs button{flex:1;background:#e8efe9;color:var(--green)}
+  .tabs button.on{background:var(--green);color:#fff}
+  .entry{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);gap:8px}
+  .entry .d{font-size:13px;color:var(--muted)}
+  .entry .a{font-weight:700}
+  .entry .sp{font-size:12px;color:var(--muted)}
+  .ded .a{color:var(--bad)}
+  .month{font-size:13px;font-weight:700;color:var(--green);margin:14px 0 2px;text-transform:uppercase;letter-spacing:.04em}
+  .msg{padding:10px 12px;border-radius:10px;font-size:14px;margin-top:10px;display:none}
+  .msg.err{display:block;background:#fbe9e7;color:var(--bad)}
+  .msg.ok{display:block;background:#e6f4ea;color:var(--green)}
+  .hidden{display:none!important}
+  .center{max-width:420px;margin:40px auto}
+  .link{background:none;color:var(--green);padding:6px 0;font-weight:600}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+  .modal .card{width:100%;max-width:520px;border-radius:16px 16px 0 0;margin:0}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  .sync{font-size:12px;color:#cfe8d6}
+</style>
+<!-- PDF tools (used for "Download PDF") -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Budget Plan</h1>
+    <div class="sync" id="syncState"></div>
+  </div>
+  <div style="text-align:right">
+    <div class="who" id="whoName"></div>
+    <button class="small ghost hidden" id="logoutBtn">Log out</button>
+  </div>
+</header>
+
+<main>
+  <!-- Setup warning (shows only if Firebase keys were not pasted in) -->
+  <div class="card hidden" id="setupWarn">
+    <h2>Setup not finished</h2>
+    <p>Open <b>index.html</b> on GitHub, find <code>firebaseConfig</code> near the bottom, and paste in your Firebase keys. See README step 4.</p>
+  </div>
+
+  <!-- ============ LOGIN / SIGN UP ============ -->
+  <section id="authView" class="center hidden">
+    <div class="card">
+      <h2 id="authTitle">Log in</h2>
+      <label>User name</label>
+      <input id="aUser" autocomplete="username" placeholder="e.g. robby">
+      <label>Password</label>
+      <input id="aPass" type="password" autocomplete="current-password" placeholder="At least 6 characters">
+      <div id="signupExtra" class="hidden">
+        <label>Confirm password</label>
+        <input id="aPass2" type="password" autocomplete="new-password">
+        <label>Email for your year-end PDF report</label>
+        <input id="aEmail" type="email" placeholder="you@gmail.com">
+      </div>
+      <div style="margin-top:14px"><button id="authBtn" style="width:100%">Log in</button></div>
+      <div class="msg" id="authMsg"></div>
+      <div style="text-align:center;margin-top:8px">
+        <button class="link" id="authSwitch">New user? Create an account</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MAIN APP ============ -->
+  <section id="appView" class="hidden">
+    <div class="tabs">
+      <button data-tab="home" class="on">Home</button>
+      <button data-tab="history">History</button>
+      <button data-tab="settings">Settings</button>
+    </div>
+
+    <!-- HOME -->
+    <div id="tab-home">
+      <div class="balances">
+        <div class="bal s" id="cardS"><div class="t">Savings</div><div class="v" id="balS">K0.00</div><div class="p" id="pctS"></div></div>
+        <div class="bal n" id="cardN"><div class="t">Needs</div><div class="v" id="balN">K0.00</div><div class="p" id="pctN"></div></div>
+        <div class="bal w" id="cardW"><div class="t">Wants</div><div class="v" id="balW">K0.00</div><div class="p" id="pctW"></div></div>
+      </div>
+
+      <div class="card">
+        <h2>Add income</h2>
+        <div class="row">
+          <div><label>Date</label><input type="date" id="inDate"></div>
+          <div><label>Amount (K)</label><input type="number" id="inAmt" step="0.01" min="0" inputmode="decimal"></div>
+        </div>
+        <label>Or work it out: hours worked × rate</label>
+        <div class="row">
+          <input type="number" id="inHours" placeholder="Hours" step="0.5" min="0" inputmode="decimal">
+          <button class="ghost" id="calcBtn" style="flex:0 0 auto">= Amount</button>
+        </div>
+        <label>Note (optional)</label>
+        <input id="inNote" placeholder="e.g. Fortnight pay">
+        <div class="preview" id="inPreview"></div>
+        <div style="margin-top:12px"><button id="addBtn" style="width:100%">Save income</button></div>
+        <div class="msg" id="addMsg"></div>
+      </div>
+
+      <div class="card">
+        <h2>Year summary <select id="yearSel" style="width:auto;padding:4px 8px;font-size:15px;margin-left:6px"></select></h2>
+        <div id="yearStats"></div>
+      </div>
+    </div>
+
+    <!-- HISTORY -->
+    <div id="tab-history" class="hidden">
+      <div class="card">
+        <h2>All entries</h2>
+        <div class="hint">Tap “Edit” to change an amount. Monthly deductions are automatic and locked.</div>
+        <div id="historyList"></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div id="tab-settings" class="hidden">
+      <div class="card">
+        <h2>My income</h2>
+        <div class="row">
+          <div><label>Usual income (K)</label><input type="number" id="sIncome" step="0.01" min="0"></div>
+          <div><label>Hourly rate (K)</label><input type="number" id="sRate" step="0.01" min="0"></div>
+        </div>
+        <h2 style="margin-top:18px">How income is split (%)</h2>
+        <div class="row">
+          <div><label>Savings</label><input type="number" id="sPS" step="0.01" min="0"></div>
+          <div><label>Needs</label><input type="number" id="sPN" step="0.01" min="0"></div>
+          <div><label>Wants</label><input type="number" id="sPW" step="0.01" min="0"></div>
+        </div>
+        <div class="hint">Must add up to 100. Changes apply to new entries only, so old records stay correct.</div>
+        <h2 style="margin-top:18px">Monthly deductions (K)</h2>
+        <div class="row">
+          <div><label>From Savings</label><input type="number" id="sDS" step="0.01" min="0"></div>
+          <div><label>From Wants</label><input type="number" id="sDW" step="0.01" min="0"></div>
+        </div>
+        <label>Start deductions from month</label>
+        <input type="month" id="sStart">
+        <div class="hint">Taken automatically on the 1st of every month.</div>
+        <label>Email for year-end PDF report</label>
+        <input type="email" id="sEmail">
+        <div style="margin-top:14px"><button id="saveSet" style="width:100%">Save settings</button></div>
+        <div class="msg" id="setMsg"></div>
+      </div>
+
+      <div class="card">
+        <h2>Reports</h2>
+        <label>Year</label>
+        <select id="pdfYear"></select>
+        <div style="margin-top:12px"><button class="ghost" id="pdfBtn" style="width:100%">Download PDF report</button></div>
+        <div class="hint">The year-end report is also emailed to you automatically on 1 January.</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Edit modal -->
+<div class="modal hidden" id="editModal">
+  <div class="card">
+    <h2>Edit income</h2>
+    <div class="row">
+      <div><label>Date</label><input type="date" id="eDate"></div>
+      <div><label>Amount (K)</label><input type="number" id="eAmt" step="0.01" min="0"></div>
+    </div>
+    <label>Note</label><input id="eNote">
+    <div class="preview" id="ePreview"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="danger" id="eDel">Delete</button>
+      <button class="ghost" id="eCancel">Cancel</button>
+      <button id="eSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc,
+  deleteDoc, collection, query, orderBy, onSnapshot, writeBatch, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* =========================================================
+   STEP 4 OF THE README: PASTE YOUR FIREBASE KEYS HERE
+   ========================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyCW-hqUFFuo-tlg57Dah9VN2pH543yPsKg",
+  authDomain: "budget-plan-b3983.firebaseapp.com",
+  projectId: "budget-plan-b3983",
+  storageBucket: "budget-plan-b3983.firebasestorage.app",
+  messagingSenderId: "979168294490",
+  appId: "1:979168294490:web:96144d4f1106e9121a8a63"
+};
+
+/* User names are turned into a private login address behind the scenes.
+   Do not change this after people have signed up. */
+const LOGIN_DOMAIN = "budgetplan.app";
+
+const DEFAULTS = {
+  usualIncome: 250, hourlyRate: 5,
+  pct: { savings: 33.34, needs: 33.33, wants: 33.33 },
+  deductions: { savings: 10, wants: 5 }
+};
+
+const $ = id => document.getElementById(id);
+const K = n => (n < 0 ? "-K" : "K") + Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const r2 = n => Math.round(n * 100) / 100;
+const pad = n => String(n).padStart(2, "0");
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+const monthStr = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const show = (el, on) => el.classList.toggle("hidden", !on);
+function msg(el, text, ok) { el.textContent = text; el.className = "msg " + (ok ? "ok" : "err"); if (ok) setTimeout(() => el.className = "msg", 3000); }
+
+if (firebaseConfig.apiKey.startsWith("PASTE")) { show($("setupWarn"), true); throw new Error("Firebase keys not set"); }
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+// Offline-friendly: records are kept on the phone and synced when internet returns.
+const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+
+let user = null, profile = null, entries = [], unsub = null, deductionsChecked = false, editingId = null;
+
+/* ---------- Split income into the 3 accounts (cents are never lost) ---------- */
+function split(amount, pct) {
+  const cents = Math.round(amount * 100);
+  const needs = Math.floor(cents * pct.needs / 100);
+  const wants = Math.floor(cents * pct.wants / 100);
+  const savings = cents - needs - wants;
+  return { savings: savings / 100, needs: needs / 100, wants: wants / 100 };
+}
+
+/* ======================== LOGIN ======================== */
+let signupMode = false;
+function setAuthMode(su) {
+  signupMode = su;
+  $("authTitle").textContent = su ? "Create account" : "Log in";
+  $("authBtn").textContent = su ? "Create account" : "Log in";
+  $("authSwitch").textContent = su ? "Already have an account? Log in" : "New user? Create an account";
+  show($("signupExtra"), su);
+  $("authMsg").className = "msg";
+}
+$("authSwitch").onclick = () => setAuthMode(!signupMode);
+
+function cleanUser(u) { return u.trim().toLowerCase(); }
+$("authBtn").onclick = async () => {
+  const uname = cleanUser($("aUser").value), pass = $("aPass").value;
+  if (!/^[a-z0-9._-]{3,20}$/.test(uname)) return msg($("authMsg"), "User name: 3–20 letters or numbers, no spaces.");
+  if (pass.length < 6) return msg($("authMsg"), "Password must be at least 6 characters.");
+  const loginEmail = `${uname}@${LOGIN_DOMAIN}`;
+  $("authBtn").disabled = true;
+  try {
+    if (signupMode) {
+      if (pass !== $("aPass2").value) throw { code: "mismatch" };
+      const email = $("aEmail").value.trim();
+      if (!/^\S+@\S+\.\S+$/.test(email)) throw { code: "bademail" };
+      const cred = await createUserWithEmailAndPassword(auth, loginEmail, pass);
+      await setDoc(doc(db, "users", cred.user.uid), {
+        username: uname, reportEmail: email,
+        usualIncome: DEFAULTS.usualIncome, hourlyRate: DEFAULTS.hourlyRate,
+        pct: DEFAULTS.pct, deductions: DEFAULTS.deductions,
+        deductionStart: monthStr(new Date()), createdAt: serverTimestamp()
+      });
+    } else {
+      await signInWithEmailAndPassword(auth, loginEmail, pass);
+    }
+  } catch (e) {
+    const map = {
+      "mismatch": "Passwords do not match.",
+      "bademail": "Please enter a valid email for your reports.",
+      "auth/email-already-in-use": "That user name is taken. Try another.",
+      "auth/invalid-credential": "Wrong user name or password.",
+      "auth/wrong-password": "Wrong user name or password.",
+      "auth/user-not-found": "Wrong user name or password.",
+      "auth/network-request-failed": "No internet. Connect and try again.",
+      "auth/too-many-requests": "Too many tries. Wait a few minutes."
+    };
+    msg($("authMsg"), map[e.code] || ("Error: " + (e.message || e.code)));
+  } finally { $("authBtn").disabled = false; }
+};
+$("logoutBtn").onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, async u => {
+  user = u;
+  if (unsub) { unsub(); unsub = null; }
+  entries = []; profile = null; deductionsChecked = false;
+  show($("logoutBtn"), !!u);
+  if (!u) { $("whoName").textContent = ""; show($("appView"), false); show($("authView"), true); setAuthMode(false); return; }
+  show($("authView"), false);
+  $("syncState").textContent = "Loading…";
+  let snap = await getDoc(doc(db, "users", u.uid));
+  for (let i = 0; i < 5 && !snap.exists(); i++) { await new Promise(r => setTimeout(r, 600)); snap = await getDoc(doc(db, "users", u.uid)); }
+  profile = snap.exists() ? snap.data() : { username: u.email.split("@")[0], ...DEFAULTS, deductionStart: monthStr(new Date()), reportEmail: "" };
+  profile = { ...DEFAULTS, ...profile, pct: { ...DEFAULTS.pct, ...(profile.pct || {}) }, deductions: { ...DEFAULTS.deductions, ...(profile.deductions || {}) } };
+  $("whoName").textContent = profile.username;
+  fillSettings();
+  $("inDate").value = todayStr();
+  $("inAmt").value = profile.usualIncome;
+  updatePreview();
+  show($("appView"), true);
+  const q = query(collection(db, "users", u.uid, "entries"), orderBy("date", "desc"));
+  unsub = onSnapshot(q, { includeMetadataChanges: true }, s => {
+    entries = s.docs.map(d => ({ id: d.id, ...d.data() }));
+    $("syncState").textContent = s.metadata.hasPendingWrites ? "Saving… (will sync when online)" : (s.metadata.fromCache ? "Offline – showing saved copy" : "Synced ✓");
+    if (!deductionsChecked && !s.metadata.fromCache) { deductionsChecked = true; applyMonthlyDeductions(); }
+    render();
+  }, e => { $("syncState").textContent = "Sync error: " + e.code; });
+});
+
+/* ================ MONTHLY DEDUCTIONS ================ */
+// One record per month with a fixed ID (ded-2026-11), so phones and laptops can never double-deduct.
+async function applyMonthlyDeductions() {
+  const have = new Set(entries.map(e => e.id));
+  const [sy, sm] = (profile.deductionStart || monthStr(new Date())).split("-").map(Number);
+  const now = new Date();
+  const batch = writeBatch(db);
+  let count = 0;
+  const endKey = now.getFullYear() * 12 + now.getMonth();
+  for (let key = sy * 12 + (sm - 1); key <= endKey; key++) {
+    const y = Math.floor(key / 12), m = (key % 12) + 1;
+    const id = `ded-${y}-${pad(m)}`;
+    if (!have.has(id)) {
+      batch.set(doc(db, "users", user.uid, "entries", id), {
+        type: "deduction", date: `${y}-${pad(m)}-01`, amount: 0,
+        savings: -profile.deductions.savings, needs: 0, wants: -profile.deductions.wants,
+        note: "Monthly deduction", createdAt: serverTimestamp()
+      });
+      count++;
+    }
+  }
+  if (count) await batch.commit();
+}
+
+/* ======================== ADD INCOME ======================== */
+function updatePreview() {
+  const a = parseFloat($("inAmt").value);
+  if (!(a > 0) || !profile) { $("inPreview").textContent = ""; return; }
+  const s = split(a, profile.pct);
+  $("inPreview").textContent = `Savings ${K(s.savings)} · Needs ${K(s.needs)} · Wants ${K(s.wants)}`;
+}
+$("inAmt").oninput = updatePreview;
+$("calcBtn").onclick = () => {
+  const h = parseFloat($("inHours").value);
+  if (!(h > 0)) return msg($("addMsg"), "Type the hours worked first.");
+  $("inAmt").value = r2(h * profile.hourlyRate).toFixed(2); updatePreview();
+};
+$("addBtn").onclick = async () => {
+  const amt = parseFloat($("inAmt").value), date = $("inDate").value;
+  if (!(amt > 0)) return msg($("addMsg"), "Enter an amount above 0.");
+  if (!date) return msg($("addMsg"), "Pick a date.");
+  const s = split(amt, profile.pct);
+  const ref = doc(collection(db, "users", user.uid, "entries"));
+  setDoc(ref, { type: "income", date, amount: r2(amt), ...s, pct: profile.pct, note: $("inNote").value.trim(), createdAt: serverTimestamp() })
+    .catch(e => msg($("addMsg"), "Could not save: " + e.code));
+  msg($("addMsg"), `Saved ${K(amt)} ✓`, true);
+  $("inNote").value = ""; $("inHours").value = ""; $("inAmt").value = profile.usualIncome; updatePreview();
+};
+
+/* ======================== RENDER ======================== */
+function totals(list) {
+  const t = { income: 0, savings: 0, needs: 0, wants: 0, dedS: 0, dedW: 0, inS: 0, inN: 0, inW: 0 };
+  for (const e of list) {
+    t.savings += e.savings || 0; t.needs += e.needs || 0; t.wants += e.wants || 0;
+    if (e.type === "income") { t.income += e.amount || 0; t.inS += e.savings; t.inN += e.needs; t.inW += e.wants; }
+    else { t.dedS += -(e.savings || 0); t.dedW += -(e.wants || 0); }
+  }
+  for (const k in t) t[k] = r2(t[k]);
+  return t;
+}
+function years() {
+  const ys = new Set(entries.map(e => e.date.slice(0, 4))); ys.add(String(new Date().getFullYear()));
+  return [...ys].sort().reverse();
+}
+function fillYearSelect(sel) {
+  const cur = sel.value; sel.innerHTML = years().map(y => `<option>${y}</option>`).join("");
+  if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+}
+function render() {
+  const all = totals(entries);
+  [["S", "savings"], ["N", "needs"], ["W", "wants"]].forEach(([c, k]) => {
+    $("bal" + c).textContent = K(all[k]);
+    $("card" + c).classList.toggle("neg", all[k] < 0);
+    $("pct" + c).textContent = profile.pct[k] + "% of income";
+  });
+  fillYearSelect($("yearSel")); fillYearSelect($("pdfYear"));
+  const y = $("yearSel").value;
+  const t = totals(entries.filter(e => e.date.startsWith(y)));
+  const n = entries.filter(e => e.date.startsWith(y) && e.type === "income").length;
+  $("yearStats").innerHTML = `
+    <div class="stat"><span>Total income (${n} entries)</span><b>${K(t.income)}</b></div>
+    <div class="stat"><span>Put into Savings</span><b>${K(t.inS)}</b></div>
+    <div class="stat"><span>Put into Needs</span><b>${K(t.inN)}</b></div>
+    <div class="stat"><span>Put into Wants</span><b>${K(t.inW)}</b></div>
+    <div class="stat"><span>Monthly deductions taken</span><b>${K(t.dedS + t.dedW)}</b></div>`;
+  let html = "", lastM = "";
+  for (const e of entries) {
+    const m = e.date.slice(0, 7);
+    if (m !== lastM) { html += `<div class="month">${MONTHS[+m.slice(5) - 1]} ${m.slice(0, 4)}</div>`; lastM = m; }
+    const ded = e.type === "deduction";
+    html += `<div class="entry ${ded ? "ded" : ""}">
+      <div><div class="a">${ded ? K(e.savings + e.wants) : K(e.amount)}</div>
+      <div class="d">${e.date}${e.note ? " · " + e.note.replace(/</g, "&lt;") : ""}</div>
+      <div class="sp">${ded ? `Savings ${K(e.savings)} · Wants ${K(e.wants)}` : `S ${K(e.savings)} · N ${K(e.needs)} · W ${K(e.wants)}`}</div></div>
+      ${ded ? `<span class="d">🔒 auto</span>` : `<button class="small ghost" data-edit="${e.id}">Edit</button>`}</div>`;
+  }
+  $("historyList").innerHTML = html || `<p class="hint">No entries yet. Add your first income on the Home tab.</p>`;
+}
+$("yearSel").onchange = render;
+
+/* ======================== TABS ======================== */
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
+  ["home", "history", "settings"].forEach(t => show($("tab-" + t), t === b.dataset.tab));
+});
+
+/* ======================== EDIT ======================== */
+$("historyList").onclick = ev => {
+  const id = ev.target.dataset.edit; if (!id) return;
+  const e = entries.find(x => x.id === id); editingId = id;
+  $("eDate").value = e.date; $("eAmt").value = e.amount; $("eNote").value = e.note || "";
+  editPreview(); show($("editModal"), true);
+};
+function editPct() { const e = entries.find(x => x.id === editingId); return (e && e.pct) || profile.pct; }
+function editPreview() {
+  const a = parseFloat($("eAmt").value);
+  if (!(a > 0)) { $("ePreview").textContent = ""; return; }
+  const s = split(a, editPct());
+  $("ePreview").textContent = `Savings ${K(s.savings)} · Needs ${K(s.needs)} · Wants ${K(s.wants)}`;
+}
+$("eAmt").oninput = editPreview;
+$("eCancel").onclick = () => show($("editModal"), false);
+$("eSave").onclick = () => {
+  const a = parseFloat($("eAmt").value); if (!(a > 0) || !$("eDate").value) return;
+  updateDoc(doc(db, "users", user.uid, "entries", editingId),
+    { date: $("eDate").value, amount: r2(a), ...split(a, editPct()), note: $("eNote").value.trim() });
+  show($("editModal"), false);
+};
+$("eDel").onclick = () => {
+  if (!confirm("Delete this income entry?")) return;
+  deleteDoc(doc(db, "users", user.uid, "entries", editingId)); show($("editModal"), false);
+};
+
+/* ======================== SETTINGS ======================== */
+function fillSettings() {
+  $("sIncome").value = profile.usualIncome; $("sRate").value = profile.hourlyRate;
+  $("sPS").value = profile.pct.savings; $("sPN").value = profile.pct.needs; $("sPW").value = profile.pct.wants;
+  $("sDS").value = profile.deductions.savings; $("sDW").value = profile.deductions.wants;
+  $("sStart").value = profile.deductionStart; $("sEmail").value = profile.reportEmail || "";
+}
+$("saveSet").onclick = async () => {
+  const pct = { savings: +$("sPS").value, needs: +$("sPN").value, wants: +$("sPW").value };
+  if (Math.abs(pct.savings + pct.needs + pct.wants - 100) > 0.011) return msg($("setMsg"), "The 3 percentages must add up to 100.");
+  if (!/^\S+@\S+\.\S+$/.test($("sEmail").value.trim())) return msg($("setMsg"), "Enter a valid report email.");
+  const upd = {
+    usualIncome: +$("sIncome").value || 0, hourlyRate: +$("sRate").value || 0, pct,
+    deductions: { savings: +$("sDS").value || 0, wants: +$("sDW").value || 0 },
+    deductionStart: $("sStart").value || profile.deductionStart, reportEmail: $("sEmail").value.trim()
+  };
+  setDoc(doc(db, "users", user.uid), upd, { merge: true }).catch(e => msg($("setMsg"), "Could not save: " + e.code));
+  profile = { ...profile, ...upd };
+  $("inAmt").value = profile.usualIncome; updatePreview(); render();
+  deductionsChecked = true; applyMonthlyDeductions();
+  msg($("setMsg"), "Settings saved ✓", true);
+};
+
+/* ======================== PDF REPORT ======================== */
+$("pdfBtn").onclick = () => {
+  const y = $("pdfYear").value;
+  const list = entries.filter(e => e.date.startsWith(y)).sort((a, b) => a.date.localeCompare(b.date));
+  const t = totals(list);
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: "mm", format: "a4" });
+  const green = [20, 83, 45];
+  pdf.setFillColor(...green); pdf.rect(0, 0, 210, 28, "F");
+  pdf.setTextColor(255); pdf.setFontSize(18); pdf.text(`Budget Plan – ${y} Annual Report`, 14, 13);
+  pdf.setFontSize(10); pdf.text(`User: ${profile.username}    Generated: ${todayStr()}`, 14, 21);
+  pdf.setTextColor(30);
+  const head = { fillColor: green, textColor: 255 };
+  pdf.autoTable({ startY: 36, head: [["Summary", "Amount"]], headStyles: head, theme: "grid",
+    body: [["Total income", K(t.income)], ["Put into Savings", K(t.inS)], ["Put into Needs", K(t.inN)], ["Put into Wants", K(t.inW)],
+      ["Deducted from Savings", K(-t.dedS)], ["Deducted from Wants", K(-t.dedW)],
+      ["Savings – net for year", K(t.savings)], ["Needs – net for year", K(t.needs)], ["Wants – net for year", K(t.wants)]],
+    columnStyles: { 1: { halign: "right" } }, styles: { fontSize: 10 } });
+  const monthly = MONTHS.map((m, i) => {
+    const mt = totals(list.filter(e => e.date.slice(5, 7) === pad(i + 1)));
+    return [m, K(mt.income), K(mt.savings), K(mt.needs), K(mt.wants)];
+  });
+  pdf.autoTable({ startY: pdf.lastAutoTable.finalY + 8, head: [["Month", "Income", "Savings (net)", "Needs (net)", "Wants (net)"]],
+    headStyles: head, theme: "striped", body: monthly, styles: { fontSize: 9 }, rowPageBreak: "avoid",
+    columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" } } });
+  pdf.autoTable({ startY: pdf.lastAutoTable.finalY + 8, head: [["Date", "Type", "Amount", "Savings", "Needs", "Wants", "Note"]],
+    headStyles: head, theme: "striped", styles: { fontSize: 8 }, rowPageBreak: "avoid", showHead: "everyPage",
+    body: list.map(e => [e.date, e.type === "income" ? "Income" : "Deduction", e.type === "income" ? K(e.amount) : "-",
+      K(e.savings), K(e.needs), K(e.wants), e.note || ""]) });
+  const pages = pdf.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) { pdf.setPage(i); pdf.setFontSize(8); pdf.setTextColor(120); pdf.text(`Page ${i} of ${pages}`, 196, 290, { align: "right" }); }
+  pdf.save(`BudgetPlan_${profile.username}_${y}.pdf`);
+};
+</script>
+</body>
+</html>
